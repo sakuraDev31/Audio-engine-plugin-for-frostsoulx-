@@ -1,37 +1,26 @@
-cmake_minimum_required(VERSION 3.20)
-project(frostsoulx_audio_engine VERSION 0.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.16)
+project(frostsoulx_stereo_surround LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(frostsoulx_dsp STATIC
-    src/sound_field.cpp
-    src/hrtf_binaural.cpp
-    src/early_reflections.cpp
+add_library(frostsoulx_stereo_surround STATIC
+    src/StereoSurroundProcessor.cpp
 )
-
-target_include_directories(frostsoulx_dsp PUBLIC
+target_include_directories(frostsoulx_stereo_surround PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-
-target_compile_features(frostsoulx_dsp PUBLIC cxx_std_17)
-
-if(MSVC)
-    target_compile_options(frostsoulx_dsp PRIVATE /W4)
-else()
-    target_compile_options(frostsoulx_dsp PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
-endif()
+target_compile_options(frostsoulx_stereo_surround PRIVATE
+    -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+)
 
 enable_testing()
-add_executable(frostsoulx_dsp_tests
-    tests/test_sound_field.cpp
+add_executable(stereo_surround_tests
+    tests/StereoSurroundProcessorTest.cpp
 )
-target_link_libraries(frostsoulx_dsp_tests PRIVATE frostsoulx_dsp)
-add_test(NAME frostsoulx_dsp_tests COMMAND frostsoulx_dsp_tests)
-
-option(FROSTSOULX_BUILD_EXAMPLE "Build a small command-line DSP example" ON)
-if(FROSTSOULX_BUILD_EXAMPLE)
-    add_executable(frostsoulx_dsp_example examples/basic_usage.cpp)
-    target_link_libraries(frostsoulx_dsp_example PRIVATE frostsoulx_dsp)
-endif()
+target_link_libraries(stereo_surround_tests PRIVATE frostsoulx_stereo_surround)
+target_compile_options(stereo_surround_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+)
+add_test(NAME stereo_surround_tests COMMAND stereo_surround_tests)
