@@ -80,7 +80,9 @@ void StereoSurroundProcessor::process(float* interleavedStereo, int frames) noex
         const float left = finiteOrZero(interleavedStereo[offset]);
         const float right = finiteOrZero(interleavedStereo[offset + 1U]);
 
-        const float mid = 0.5f * (left + right);
+        // Center content is preserved because the surround generator consumes
+        // only side information. When L == R, side is exactly zero and the
+        // direct center image is not widened, rotated, or otherwise processed.
         const float side = 0.5f * (left - right);
 
         // Keep the bass/low-mid portion of the side signal direct. Only the
@@ -90,8 +92,11 @@ void StereoSurroundProcessor::process(float* interleavedStereo, int frames) noex
 
         const float delayedA = delayLineA_[(writeIndex_ + kMaxDelaySamples - delayA_) % kMaxDelaySamples];
         const float delayedB = delayLineB_[(writeIndex_ + kMaxDelaySamples - delayB_) % kMaxDelaySamples];
+        // Both decorrelation paths receive the same side-derived signal. Their
+        // different delays and bounded one-pole coefficients create the
+        // distinction; there is no polarity inversion trick.
         delayLineA_[writeIndex_] = sideHigh;
-        delayLineB_[writeIndex_] = -sideHigh;
+        delayLineB_[writeIndex_] = sideHigh;
         writeIndex_ = (writeIndex_ + 1U) % kMaxDelaySamples;
 
         // Two short, bounded one-pole decorrelators provide ambience without
@@ -102,14 +107,13 @@ void StereoSurroundProcessor::process(float* interleavedStereo, int frames) noex
                                (0.55f * decorrelatedA_ + 0.45f * decorrelatedB_) * sideHighMix;
 
         // Fold virtual rear components back into stereo while preserving the
-        // original direct image and protecting the center channel.
-        const float surroundLeft = -ambience * rearMix;
-        const float surroundRight = ambience * rearMix;
-        interleavedStereo[offset] = boundedAdd(left, surroundLeft);
-        interleavedStereo[offset + 1U] = boundedAdd(right, surroundRight);
-
-        // Mid is intentionally analyzed but not widened or phase-rotated.
-        (void)mid;
+        // original direct image. Both outputs use same-polarity, side-derived
+        // ambience; their decorrelated states remain distinct, so the direct
+        // stereo field is retained without a polarity/phase gimmick.
+        const float rearLeft = 0.45f * ambience + 0.55f * decorrelatedA_;
+        const float rearRight = 0.45f * ambience + 0.55f * decorrelatedB_;
+        interleavedStereo[offset] = boundedAdd(left, rearLeft * rearMix);
+        interleavedStereo[offset + 1U] = boundedAdd(right, rearRight * rearMix);
     }
 }
 
