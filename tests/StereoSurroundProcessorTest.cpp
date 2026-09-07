@@ -75,10 +75,23 @@ void testStereoEffectAndIntensity() {
     bool changed = false;
     for (std::size_t i = 0; i < output.size(); ++i) {
         assert(std::isfinite(output[i]));
-        assert(output[i] >= -1.0f && output[i] <= 1.0f);
         changed = changed || !nearlyEqual(output[i], source[i], 1.0e-5f);
     }
     assert(changed);
+}
+
+void testSpatialStageDoesNotLimit() {
+    frostsoulx::StereoSurroundProcessor processor;
+    prepare(processor);
+    processor.setEnabled(true);
+    processor.setIntensity(1.0f);
+
+    // A high-level opposite-side signal leaves enough side energy for the
+    // spatial contribution to exceed full scale. The processor must preserve
+    // the linear direct-plus-surround result for the later master stage.
+    std::vector<float> input{0.99f, -0.99f};
+    processor.process(input.data(), 1);
+    assert(input[0] > 1.0f || input[1] < -1.0f);
 }
 
 void testResetClearsState() {
@@ -117,6 +130,7 @@ int main() {
     testTrueBypass();
     testCenterStability();
     testStereoEffectAndIntensity();
+    testSpatialStageDoesNotLimit();
     testResetClearsState();
     testParameterSafety();
     std::cout << "StereoSurroundProcessor tests passed\n";

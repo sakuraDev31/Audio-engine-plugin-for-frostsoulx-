@@ -8,7 +8,6 @@ namespace frostsoulx {
 namespace {
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kMaxContribution = 0.22f;
-constexpr float kMinimumHeadroom = 0.02f;
 }
 
 void StereoSurroundProcessor::prepare(double sampleRate, int channels, int maxBlockSize) noexcept {
@@ -50,18 +49,6 @@ float StereoSurroundProcessor::clamp01(float value) noexcept {
 
 float StereoSurroundProcessor::finiteOrZero(float value) noexcept {
     return std::isfinite(value) ? value : 0.0f;
-}
-
-float StereoSurroundProcessor::boundedAdd(float direct, float contribution) noexcept {
-    direct = std::clamp(finiteOrZero(direct), -1.0f, 1.0f);
-    contribution = finiteOrZero(contribution);
-
-    // Preserve the direct sample while compressing only the available
-    // remaining headroom. This is not block normalization and has no
-    // block-boundary gain step.
-    const float available = std::max(kMinimumHeadroom, 1.0f - std::fabs(direct));
-    const float shaped = std::tanh(contribution / available) * available;
-    return std::clamp(direct + shaped, -1.0f, 1.0f);
 }
 
 void StereoSurroundProcessor::process(float* interleavedStereo, int frames) noexcept {
@@ -112,8 +99,11 @@ void StereoSurroundProcessor::process(float* interleavedStereo, int frames) noex
         // stereo field is retained without a polarity/phase gimmick.
         const float rearLeft = 0.45f * ambience + 0.55f * decorrelatedA_;
         const float rearRight = 0.45f * ambience + 0.55f * decorrelatedB_;
-        interleavedStereo[offset] = boundedAdd(left, rearLeft * rearMix);
-        interleavedStereo[offset + 1U] = boundedAdd(right, rearRight * rearMix);
+        // Spatial-only reconstruction: preserve the direct samples and add
+        // only the generated surround contribution. Master headroom and
+        // limiting belong to a later stage outside this processor.
+        interleavedStereo[offset] = left + rearLeft * rearMix;
+        interleavedStereo[offset + 1U] = right + rearRight * rearMix;
     }
 }
 

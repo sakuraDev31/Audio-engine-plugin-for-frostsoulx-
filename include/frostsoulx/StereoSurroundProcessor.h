@@ -27,7 +27,6 @@ private:
 
     [[nodiscard]] static float clamp01(float value) noexcept;
     [[nodiscard]] static float finiteOrZero(float value) noexcept;
-    [[nodiscard]] static float boundedAdd(float direct, float contribution) noexcept;
 
     bool prepared_ = false;
     bool enabled_ = false;
