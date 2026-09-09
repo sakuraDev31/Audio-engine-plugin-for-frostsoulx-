@@ -1,117 +1,100 @@
-# FrostSoulX Audio Engine
+# FrostSoulX Immersive Audio Engine
 
-A portable C++17 DSP core for FrostSoulX’s QQ Music–inspired Sound Field experience and headphone HRTF binaural rendering. The repository intentionally starts with host-independent processors so the same DSP can later be exposed through Android/JNI, Media3, or a native plugin adapter.
+This repository is the **canonical source** for FrostSoulX immersive audio processing. The application repository consumes the engine through an Android/Media3 adapter; engine implementation changes should be made here first and then synchronized into the app integration.
 
-## Current scope
+## Current engine
 
-The first engine provides a real-time-safe stereo float processor with bypass support, preset defaults, bounded mid/side widening, low-frequency protection, gentle crossfeed, spatial reverb, pseudo-surround enhancement, output gain, and a soft safety limiter. The processor operates on interleaved stereo PCM in place and does not allocate memory from `process()`.
+The engine exposes one small real-time-safe C++17 class:
 
-The signal path is deliberately conservative:
+```cpp
+#include "frostsoulx/immersive_audio_engine.h"
 
-> Stereo PCM → low-frequency separation → protected mid/side width and surround enhancement → short asymmetric reflections and diffusion → crossfeed → output gain → soft limiter
+frostsoulx::ImmersiveAudioEngine engine;
+engine.prepare(48000, 8192);       // control thread
+engine.setSpatialBlend(1.0f);      // control thread
+engine.setEnabled(true);           // control thread
+engine.process(interleavedStereo, frames); // audio thread
+```
 
-The reverb uses fixed-size asymmetric delay buffers to create short early reflections and a compact diffuse tail. The wet path is kept low and is derived mainly from the non-bass signal so the center and low-frequency foundation remain stable. The surround control increases side energy without changing the output channel count; it is therefore pseudo-surround enhancement for stereo playback, not discrete 5.1/7.1 rendering.
+The production backend is **Steam Audio 4.8.1**. It creates one Steam Audio context, the default HRTF, and one binaural effect per continuous playback stream. Input is interleaved stereo float PCM at the public engine boundary. Steam Audio receives preallocated deinterleaved channel buffers and returns stereo output, which is interleaved again before returning to the host.
 
-This is an app-level immersive enhancement effect. It is not Dolby Atmos decoding, authored multichannel rendering, or head-tracked HRTF spatialization. Those capabilities can be added later as separate adapters or processing layers.
+The engine does not allocate, lock, perform file I/O, or log inside `process()`. Allocation and Steam Audio object creation happen in `prepare()`, while stream state is cleared by `reset()` on a control/lifecycle boundary.
 
-## Presets
+## Processing path
 
-| Preset | Intent |
+```text
+Media3 PCM
+  → FrostSoulX Media3 adapter
+  → interleaved PCM16/float conversion
+  → ImmersiveAudioEngine
+  → Steam Audio default HRTF binaural effect
+  → interleaved PCM output
+  → Media3 AudioSink / AudioTrack
+```
+
+When the engine is disabled, the app adapter performs a strict renderer-level bypass and does not call the native processing function. This is intentionally separate from `setSpatialBlend(0.0f)`: zero blend is a processed path, while disabled is a byte-preserving fallback path.
+
+## Repository layout
+
+| Path | Purpose |
 | --- | --- |
-| `Natural` | Mild width and crossfeed for everyday listening |
-| `Live` | Moderate width and crossfeed with stronger space |
-| `Wide` | More instrumental separation while protecting bass |
-| `Immersive` | Strongest initial sound-field enhancement with conservative limiting |
-| `Custom` | Uses caller-supplied width, crossfeed, protection, surround, and reverb values |
-
-The `intensity` value scales the effect from `0.0` to `1.0`. All public floating-point parameters are sanitized and bounded by the processor. `reverbMix` is limited to a conservative 35% wet maximum, and `reverbDecay` is limited to prevent runaway feedback.
+| `include/frostsoulx/immersive_audio_engine.h` | Stable host-facing engine API. |
+| `src/immersive_audio_engine.cpp` | Steam Audio-backed implementation and safe fallback. |
+| `third_party/steamaudio_sdk/` | Official Steam Audio headers, Android ARM64 library, and Apache-2.0 license. |
+| `tests/test_immersive_audio_engine.cpp` | Host smoke test for fallback and finite-output behavior. |
+| `CMakeLists.txt` | Host test and Android ARM64 integration build contract. |
 
 ## Build and test
+
+Host builds intentionally compile without Steam Audio unless the platform-specific binary is supplied:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-./build/frostsoulx_dsp_example
 ```
 
-## Integration direction
-
-The next adapter should expose the Sound Field processor to Android through JNI or a Media3 `AudioProcessor`. The Media3 adapter must convert supported PCM formats to the engine’s float stereo contract, disable audio offload while the custom DSP is active, flush the processor when stream format changes, and preserve a true bypass path. The platform Android Spatializer should remain a separate path for authored multichannel content so tracks are not double-processed.
-
-## HRTF binaural path
-
-`HrtfBinauralProcessor` is a separate headphone renderer. It accepts measured left and right head-related impulse responses (HRIRs), convolves a mono source with both ear responses, and outputs interleaved stereo headphone audio. The processor supports up to 512 taps, uses fixed storage, and does not allocate during `process()`.
-
-The HRTF processor is deliberately separate from the stereo Sound Field effect. A host should select one spatial path at a time: HRTF binaural for headphone rendering, Sound Field for stereo enhancement, or platform Spatializer for compatible authored multichannel content. The current API accepts HRIR coefficients but does not embed a redistributable HRTF dataset; a SOFA loader and dataset licensing decision are future adapter responsibilities.
-
-Directional HRIR sets can now be supplied with azimuth/elevation coordinates. The renderer selects up to four nearby measurements and performs inverse-distance interpolation over the directional grid. Azimuth wraps across -180/180 degrees, while elevation is clamped to -90/90 degrees. When the direction changes, the old and interpolated new filters are rendered in parallel and mixed with an equal-power crossfade, preventing abrupt filter changes and reducing clicks or comb-filter artifacts during movement.
-
-The renderer uses a hybrid convolution strategy. Responses up to 256 taps remain on the low-latency direct time-domain FIR path. Longer HRIRs use a fixed-size uniformly partitioned FFT path with 64-sample partitions and 128-point radix-2 transforms. The partitioned path adds one partition of algorithmic latency, but its cost scales with the number of partitions rather than multiplying every input sample by every HRIR tap. The fixed buffers are preallocated and the audio callback performs no dynamic allocation.
-
-The partitioned path supports the same directional crossfade model. When a direction changes, current and target partition spectra are rendered and mixed with an equal-power transition. After the transition, the target spectra become active without rebuilding FFT filters inside the callback.
-
-## RIR early reflections
-
-`EarlyReflectionProcessor` is a separate wet-only room stage. It accepts a stereo room impulse response, convolves the mono source into left/right reflection signals, and applies a bounded wet mix. It does not add dry audio and therefore can be summed with the direct HRTF output without duplicating the direct path:
-
-```cpp
-hrtf.process(mono, binauralDirect, frames);
-reflections.process(mono, roomWet, frames);
-for (std::size_t i = 0; i < frames * 2; ++i) {
-    output[i] = binauralDirect[i] + roomWet[i];
-}
-```
-
-The RIR stage is intended for early reflections rather than a complete late-reverberation model. The RIR should contain the desired reflection delays and gains, and its mix should be kept conservative to preserve localization. The shared `RoomGeometry` model now exposes source position, listener position, room dimensions, reference distance, maximum distance, direct-distance exponent, reflection-distance exponent, and reflection balance.
-
-The HRTF processor applies distance-dependent direct attenuation, while the RIR processor applies an independent reflected gain. With a source at distance `d`, reference distance `r`, and exponent `p`, the normalized gain is approximately `(r / d)^p` within the configured maximum distance. This creates a controllable direct-to-reflected balance rather than treating the room response as a fixed-volume effect. Geometry can be updated from a non-real-time control path before processing; the audio callback only reads precomputed scalar gains.
-
-```cpp
-RoomGeometry geometry;
-geometry.sourcePosition = {4.0f, 1.5f, 1.2f};
-geometry.listenerPosition = {0.0f, 0.0f, 1.2f};
-geometry.roomDimensions = {8.0f, 6.0f, 3.0f};
-geometry.directDistanceExponent = 1.0f;
-geometry.reflectionDistanceExponent = 0.5f;
-geometry.reflectionBalance = 0.75f;
-
-hrtf.setRoomGeometry(geometry);
-reflections.setRoomGeometry(geometry);
-```
-
-## SOFA asset workflow
-
-The runtime does not depend on HDF5. Instead, the offline `tools/sofa_to_fhrtf.py` converter reads a licensed SOFA `SimpleFreeFieldHRIR` dataset with `h5py` and writes a compact validated `.fhrtf` asset. The C++ engine loads that asset outside the audio callback:
+The host test verifies that the fallback contract is safe. The vendored Steam Audio binary in this repository is Android ARM64 only. Android integration enables it with:
 
 ```bash
-python3 tools/sofa_to_fhrtf.py input.sofa assets/profile.fhrtf
+cmake \
+  -S . \
+  -B build-android-arm64 \
+  -DANDROID_ABI=arm64-v8a \
+  -DFROSTSOULX_USE_STEAM_AUDIO=ON
 ```
 
-Then the host can load and use it as follows:
+The FrostSoulX app’s Gradle/CMake layer supplies the Android toolchain and packages `libphonon.so`; this repository does not own the app’s JNI or Media3 lifecycle code.
 
-```cpp
-processor.prepare({48000.0});
-processor.loadFhrtfAsset("assets/profile.fhrtf");
-processor.setCrossfadeSamples(256);
-processor.setDirection(45.0f, 10.0f);
-processor.setEnabled(true);
-```
+## Integration contract for the app
 
-The binary format stores a version, sample rate, directional measurement count, tap count, and left/right HRIR arrays. It is intentionally an internal derived-asset format; redistribution of the original SOFA dataset remains governed by that dataset’s license. The runtime supports up to 2048 taps and 64 directions in its fixed-capacity configuration.
+The app adapter must configure the engine only for two-channel PCM16 or PCM float input, preserve the original Media3 format, preallocate a dedicated output buffer, and call `reset()` on flush or format changes. It must preserve queue, current media item, playback position, play/pause state, repeat mode, shuffle state, playback parameters, and volume when rebuilding the renderer/sink.
+
+The app must keep the OFF path independent of this engine. If Steam Audio cannot be loaded or the engine cannot prepare, the adapter must fail closed and use the original Media3 audio path rather than creating a partial or silent processor.
+
+The app’s Android AudioEffect layer—equalizer, bass boost, virtualizer, and loudness controls—is a separate platform path and is not implemented in this repository.
+
+## Steam Audio and licensing
+
+The engine uses the official Steam Audio C API package. The SDK headers and Android ARM64 library are vendored under `third_party/steamaudio_sdk/`. The accompanying Apache-2.0 license is included at `third_party/steamaudio_sdk/LICENSE.md`; redistribution must preserve the license and attribution notices.
+
+The default HRTF is supplied by Steam Audio. This repository does not add a custom SOFA/HRTF dataset, head tracking, room simulation, reflections, or reverb. Those are separate future components and must not be added by modifying the current callback path without a new design and measurement plan.
 
 ## Design rules
 
-The audio callback must not allocate, lock, perform file I/O, or depend on UI state. Parameter updates should be copied into the processor from a non-real-time control path. The current implementation keeps state for its low-frequency filter, crossfeed, and fixed reverb delay lines, making reset and track transitions explicit. The design follows established artificial-reverb practice using delay lines and allpass/diffusion concepts, while keeping this first implementation small enough for mobile playback.[1] [2] Stereo decorrelation and widening are intentionally bounded to protect mono compatibility.[3]
+Changes to the engine should preserve these invariants:
 
-## Research references
+1. `process()` must remain allocation-free, lock-free, non-blocking, and free of file I/O and logging.
+2. `setEnabled(false)` must be safe, but the app-level renderer bypass remains the authoritative byte-preserving OFF path.
+3. PCM conversion must clamp or reject invalid values and must never emit NaN or infinity.
+4. The engine must be reset or recreated when sample rate, channel count, encoding, or maximum frame size changes.
+5. Every algorithmic change requires asymmetric stereo test material and measurements at zero and full spatial blend.
+6. The application should be updated only after this repository’s native tests and Android ARM64 packaging checks pass.
 
-[1]: https://www.dsprelated.com/freebooks/pasp/Artificial_Reverberation.html
+## Sources
 
-[2]: https://ccrma.stanford.edu/~jos/pasp/Schroeder_Allpass_Sections.html
-
-[3]: https://www.dafx.de/paper-archive/2024/papers/DAFx24_paper_92.pdf
-
-## License
-
-License terms have not yet been selected for this new repository. Add the intended license before publishing or integrating the engine into a distributable application.
+- Steam Audio downloads: https://valvesoftware.github.io/steam-audio/downloads.html
+- Steam Audio C API getting started: https://valvesoftware.github.io/steam-audio/doc/capi/getting-started.html
+- Steam Audio audio buffers: https://valvesoftware.github.io/steam-audio/doc/capi/audio-buffers.html
+- Steam Audio repository: https://github.com/ValveSoftware/steam-audio
+- Steam Audio license: https://github.com/ValveSoftware/steam-audio/blob/master/LICENSE.md
