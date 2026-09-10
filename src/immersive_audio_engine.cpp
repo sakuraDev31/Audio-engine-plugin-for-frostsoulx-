@@ -157,6 +157,22 @@ struct ImmersiveAudioEngine::Impl {
                 reflectionTapCount = 6;
                 damping = 0.57f;
                 break;
+            case RoomSimulationPreset::Subway:
+                tapDelaysMs[0] = 18.0f;
+                tapDelaysMs[1] = 33.0f;
+                tapDelaysMs[2] = 56.0f;
+                tapDelaysMs[3] = 84.0f;
+                tapDelaysMs[4] = 119.0f;
+                tapDelaysMs[5] = 158.0f;
+                tapGains[0] = 0.36f;
+                tapGains[1] = 0.29f;
+                tapGains[2] = 0.22f;
+                tapGains[3] = 0.17f;
+                tapGains[4] = 0.12f;
+                tapGains[5] = 0.08f;
+                reflectionTapCount = 6;
+                damping = 0.48f;
+                break;
         }
 
         if (sampleRate <= 0 || reflectionDelayLeft.empty()) {
@@ -180,6 +196,7 @@ struct ImmersiveAudioEngine::Impl {
                 case RoomSimulationPreset::Studio: return 53.0f;
                 case RoomSimulationPreset::ConcertHall: return 79.0f;
                 case RoomSimulationPreset::Cathedral: return 107.0f;
+                case RoomSimulationPreset::Subway: return 86.0f;
             }
             return 53.0f;
         }();

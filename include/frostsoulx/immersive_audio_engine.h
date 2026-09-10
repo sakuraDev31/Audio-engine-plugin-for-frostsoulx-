@@ -20,6 +20,7 @@ enum class RoomSimulationPreset {
     Studio,
     ConcertHall,
     Cathedral,
+    Subway,
 };
 
 class ImmersiveAudioEngine final {

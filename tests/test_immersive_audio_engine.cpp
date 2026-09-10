@@ -6,6 +6,7 @@
 
 int main() {
     static_assert(frostsoulx::ImmersiveAudioEngine::kPreferredQuantumFrames == 384);
+    static_assert(static_cast<int>(frostsoulx::RoomSimulationPreset::Subway) == 5);
     frostsoulx::ImmersiveAudioEngine engine;
     constexpr int kFrames = frostsoulx::ImmersiveAudioEngine::kPreferredQuantumFrames;
     if (!engine.prepare(48000, kFrames)) {
