@@ -19,6 +19,10 @@ public:
     ImmersiveAudioEngine();
     ~ImmersiveAudioEngine();
 
+    // Recommended host callback quantum for low-latency processing at common
+    // sample rates. The engine still accepts any positive max frame count.
+    static constexpr int kPreferredQuantumFrames = 384;
+
     ImmersiveAudioEngine(const ImmersiveAudioEngine&) = delete;
     ImmersiveAudioEngine& operator=(const ImmersiveAudioEngine&) = delete;
 

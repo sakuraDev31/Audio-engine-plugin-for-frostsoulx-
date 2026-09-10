@@ -5,19 +5,21 @@
 #include <vector>
 
 int main() {
+    static_assert(frostsoulx::ImmersiveAudioEngine::kPreferredQuantumFrames == 384);
     frostsoulx::ImmersiveAudioEngine engine;
-    if (!engine.prepare(48000, 256)) {
+    constexpr int kFrames = frostsoulx::ImmersiveAudioEngine::kPreferredQuantumFrames;
+    if (!engine.prepare(48000, kFrames)) {
         std::cout << "Steam Audio backend disabled; fallback contract verified\n";
         return 0;
     }
 
-    std::vector<float> stereo(256 * 2, 0.0f);
+    std::vector<float> stereo(kFrames * 2, 0.0f);
     stereo[0] = 1.0f;
     stereo[1] = 0.25f;
     const auto original = stereo;
 
     engine.setEnabled(false);
-    if (engine.process(stereo.data(), 256)) {
+    if (engine.process(stereo.data(), kFrames)) {
         std::cerr << "disabled engine unexpectedly processed audio\n";
         return 1;
     }
@@ -28,7 +30,7 @@ int main() {
 
     engine.setSpatialBlend(1.0f);
     engine.setEnabled(true);
-    if (!engine.process(stereo.data(), 256)) {
+    if (!engine.process(stereo.data(), kFrames)) {
         std::cerr << "prepared engine rejected an audio block\n";
         return 1;
     }

@@ -11,7 +11,8 @@
 namespace frostsoulx {
 
 struct ImmersiveAudioEngine::Impl {
-    static constexpr int kSteamAudioFrameSize = 1024;
+    // Keep the effect block below 10 ms at 48 kHz for low-latency playback.
+    static constexpr int kSteamAudioFrameSize = 384;
     int sampleRate = 0;
     int maxFrames = 0;
     bool prepared = false;
@@ -231,9 +232,15 @@ bool ImmersiveAudioEngine::process(float* interleavedStereo, int frames) noexcep
         }
         anyInputEnergy = anyInputEnergy || inputHasEnergy;
         anyOutputEnergy = anyOutputEnergy || outputHasEnergy;
+        // Use fixed headroom instead of per-block normalization. A changing
+        // block gain can pump and crackle on sustained bass; this stage is
+        // only on the enabled path and never affects the OFF bypass.
+        constexpr float kSteamAudioOutputGain = 0.70710678f; // -3 dB
         for (int frame = 0; frame < activeFrames; ++frame) {
-            interleavedStereo[(frameOffset + frame) * 2] = impl_->outputLeft[static_cast<std::size_t>(frame)];
-            interleavedStereo[(frameOffset + frame) * 2 + 1] = impl_->outputRight[static_cast<std::size_t>(frame)];
+            interleavedStereo[(frameOffset + frame) * 2] =
+                impl_->outputLeft[static_cast<std::size_t>(frame)] * kSteamAudioOutputGain;
+            interleavedStereo[(frameOffset + frame) * 2 + 1] =
+                impl_->outputRight[static_cast<std::size_t>(frame)] * kSteamAudioOutputGain;
         }
         frameOffset += activeFrames;
     }
