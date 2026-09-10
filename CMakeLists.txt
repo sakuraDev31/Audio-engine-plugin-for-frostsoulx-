@@ -23,13 +23,17 @@ target_compile_options(frostsoulx_immersive_audio PRIVATE
     -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 
 if(FROSTSOULX_USE_STEAM_AUDIO)
-    if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
-        message(FATAL_ERROR "Steam Audio 4.8.1 is vendored for Android arm64-v8a in this repository")
+    if(ANDROID_ABI STREQUAL "arm64-v8a")
+        set(FROSTSOULX_STEAMAUDIO_LIB_DIR "android-armv8")
+    elseif(ANDROID_ABI STREQUAL "x86_64")
+        set(FROSTSOULX_STEAMAUDIO_LIB_DIR "android-x64")
+    else()
+        message(FATAL_ERROR "Steam Audio 4.8.1 is available for Android arm64-v8a and x86_64 only")
     endif()
     add_library(phonon SHARED IMPORTED)
     set_target_properties(phonon PROPERTIES
         IMPORTED_LOCATION
-            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/steamaudio_sdk/lib/android-armv8/libphonon.so
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/steamaudio_sdk/lib/${FROSTSOULX_STEAMAUDIO_LIB_DIR}/libphonon.so
         INTERFACE_INCLUDE_DIRECTORIES
             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/steamaudio_sdk/include)
     target_compile_definitions(frostsoulx_immersive_audio PRIVATE
