@@ -14,6 +14,22 @@ enum class ImmersiveProcessResult {
     SteamAudioProcessed,
 };
 
+enum class RoomSimulationPreset {
+    Off,
+    SmallRoom,
+    Studio,
+    ConcertHall,
+    Cathedral,
+    Subway,
+};
+
+// UI-friendly normalized controls in [0, 1].
+struct SpaceDesignControls {
+    float roomSize = 0.5f;
+    float dampening = 0.5f;
+    float width = 0.5f;
+};
+
 class ImmersiveAudioEngine final {
 public:
     ImmersiveAudioEngine();
@@ -30,6 +46,19 @@ public:
     void reset() noexcept;
     void setEnabled(bool enabled) noexcept;
     void setSpatialBlend(float blend) noexcept;
+
+    // Space simulation controls (control thread only).
+    void setRoomSimulationPreset(RoomSimulationPreset preset) noexcept;
+    void setRoomMix(float wetMix) noexcept;
+    void setReflectionAmount(float amount) noexcept;
+    void setReverbTimeSeconds(float seconds) noexcept;
+
+    // Additional normalized UI controls (sliders/knobs): [0, 1].
+    void setRoomSize(float size) noexcept;
+    void setDampening(float dampening) noexcept;
+    void setStereoWidth(float width) noexcept;
+    SpaceDesignControls spaceDesignControls() const noexcept;
+
     bool isPrepared() const noexcept;
     int maxFrames() const noexcept;
     ImmersiveProcessResult lastProcessResult() const noexcept;

@@ -78,7 +78,7 @@ The app’s Android AudioEffect layer—equalizer, bass boost, virtualizer, and 
 
 The engine uses the official Steam Audio C API package. The SDK headers and Android ARM64 library are vendored under `third_party/steamaudio_sdk/`. The accompanying Apache-2.0 license is included at `third_party/steamaudio_sdk/LICENSE.md`; redistribution must preserve the license and attribution notices.
 
-The default HRTF is supplied by Steam Audio. This repository does not add a custom SOFA/HRTF dataset, head tracking, room simulation, reflections, or reverb. Those are separate future components and must not be added by modifying the current callback path without a new design and measurement plan.
+The default HRTF is supplied by Steam Audio. In addition to binaural rendering, the engine now includes a lightweight post-space stage with preset room simulations (small room, studio, concert hall, cathedral), early reflections, and bounded-feedback reverb tuned for mobile CPU and memory limits.
 
 ## Design rules
 
